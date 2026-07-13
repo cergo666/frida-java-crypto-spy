@@ -15,7 +15,8 @@ Java.perform(() => {
         OkHttp: false,
         EncryptedSharedPrefs: false,
         SQLCipher: false,
-        Tink: false
+        Tink: true,
+        AdBlocker: false
     };
 
     const IGNORE_KEYWORDS = [
@@ -793,6 +794,223 @@ Java.perform(() => {
                 };
             });
         } catch(_) {}
+    }
+
+    // ===================== AdBlocker =====================
+    if (MODULES.AdBlocker) {
+        const color = randomColor();
+        console.log(`${yellow}[AdBlocker] Active — blocking ads and spoofing callbacks${reset}`);
+
+        // --- Google AdMob ---
+        try {
+            const AdView = Java.use("com.google.android.gms.ads.AdView");
+            AdView.loadAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.AdView.loadAd", { blocked: true }, color);
+                };
+            });
+            AdView.resume.overloads.forEach(o => {
+                o.implementation = function () {};
+            });
+        } catch(_) {}
+
+        try {
+            const InterstitialAd = Java.use("com.google.android.gms.ads.InterstitialAd");
+            InterstitialAd.loadAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.InterstitialAd.loadAd", { blocked: true }, color);
+                };
+            });
+            InterstitialAd.show.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.InterstitialAd.show", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        try {
+            const RewardedAd = Java.use("com.google.android.gms.ads.rewarded.RewardedAd");
+            RewardedAd.load.overloads.forEach(o => {
+                o.implementation = function (ctx, adUnitId, callback) {
+                    logObj("AdBlocker.RewardedAd.load", { adUnitId: adUnitId, blocked: true }, color);
+                    if (callback) {
+                        const OnAdLoadedListener = Java.use("com.google.android.gms.ads.rewarded.RewardedAdLoadCallback");
+                        try {
+                            Java.cast(callback, OnAdLoadedListener);
+                            callback.onAdLoaded();
+                        } catch(_) {}
+                    }
+                };
+            });
+        } catch(_) {}
+
+        // --- AdMob Interstitial callback spoofing ---
+        try {
+            const AdListener = Java.use("com.google.android.gms.ads.AdListener");
+            AdListener.onAdLoaded.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.AdListener.onAdLoaded", { spoofed: true }, color);
+                };
+            });
+            AdListener.onAdFailedToLoad.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.AdListener.onAdFailedToLoad", { spoofed: "success" }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- Facebook Ads ---
+        try {
+            const FbAdView = Java.use("com.facebook.ads.AdView");
+            FbAdView.loadAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.FbAdView.loadAd", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        try {
+            const FbInterstitial = Java.use("com.facebook.ads.InterstitialAd");
+            FbInterstitial.loadAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.FbInterstitial.loadAd", { blocked: true }, color);
+                };
+            });
+            FbInterstitial.show.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.FbInterstitial.show", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- Unity Ads ---
+        try {
+            const UnityAds = Java.use("com.unity3d.ads.UnityAds");
+            UnityAds.load.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.UnityAds.load", { adUnitId: arguments[0], blocked: true }, color);
+                };
+            });
+            UnityAds.show.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.UnityAds.show", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- IronSource ---
+        try {
+            const IronSource = Java.use("com.ironsource.mediationsdk.IronSource");
+            IronSource.loadInterstitial.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.IronSource.loadInterstitial", { blocked: true }, color);
+                };
+            });
+            IronSource.showInterstitial.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.IronSource.showInterstitial", { blocked: true }, color);
+                };
+            });
+            IronSource.loadRewardedVideo.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.IronSource.loadRewardedVideo", { blocked: true }, color);
+                };
+            });
+            IronSource.showRewardedVideo.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.IronSource.showRewardedVideo", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- AppLovin ---
+        try {
+            const AppLovin = Java.use("com.applovin.sdk.AppLovinSdk");
+            AppLovin.showAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.AppLovin.showAd", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- Vungle ---
+        try {
+            const Vungle = Java.use("com.vungle.warren.Vungle");
+            Vungle.playAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.Vungle.playAd", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- Chartboost ---
+        try {
+            const Chartboost = Java.use("com.chartboost.sdk.Chartboost");
+            Chartboost.showInterstitial.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.Chartboost.showInterstitial", { blocked: true }, color);
+                };
+            });
+            Chartboost.showRewardedVideo.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.Chartboost.showRewardedVideo", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- Pangle (TikTok) ---
+        try {
+            const PangleAd = Java.use("com.bytedance.sdk.openadsdk.TTAdNative");
+            PangleAd.loadInterstitialAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.Pangle.loadInterstitialAd", { blocked: true }, color);
+                };
+            });
+            PangleAd.loadRewardVideoAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.Pangle.loadRewardVideoAd", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- StartApp ---
+        try {
+            const StartApp = Java.use("com.startapp.sdk.adsbase.StartAppSDK");
+            StartApp.showAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.StartApp.showAd", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- Yandex Ads ---
+        try {
+            const YandexAd = Java.use("com.yandex.mobile.ads.AdView");
+            YandexAd.loadAd.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("AdBlocker.YandexAd.loadAd", { blocked: true }, color);
+                };
+            });
+        } catch(_) {}
+
+        // --- Generic WebView ad blocking (intercept URLs) ---
+        try {
+            const WebView = Java.use("android.webkit.WebView");
+            WebView.loadUrl.overloads.forEach(o => {
+                o.implementation = function (url) {
+                    const urlStr = url.toString().toLowerCase();
+                    if (urlStr.includes("ads") || urlStr.includes("admob") ||
+                        urlStr.includes("doubleclick") || urlStr.includes("googlesyndication") ||
+                        urlStr.includes("facebook.com/tr") || urlStr.includes("analytics")) {
+                        logObj("AdBlocker.WebView.loadUrl", { url: urlStr, blocked: true }, color);
+                        return;
+                    }
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(_) {}
+
+        console.log(`${green}[AdBlocker] Hooked ad networks: AdMob, Facebook, Unity, IronSource, AppLovin, Vungle, Chartboost, Pangle, StartApp, Yandex${reset}`);
     }
 
     // ===================== Summary =====================

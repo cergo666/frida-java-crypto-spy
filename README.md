@@ -46,7 +46,8 @@ const MODULES = {
     OkHttp: false,
     EncryptedSharedPrefs: false,
     SQLCipher: false,
-    Tink: false
+    Tink: true,
+    AdBlocker: false
 };
 ```
 
@@ -70,6 +71,7 @@ const MODULES = {
 | `EncryptedSharedPrefs` | OFF | EncryptedSharedPreferences |
 | `SQLCipher` | OFF | SQLCipher encrypted databases |
 | `Tink` | OFF | Google Tink crypto library |
+| `AdBlocker` | OFF | Block ads and spoof ad callbacks |
 
 ---
 
