@@ -13,7 +13,7 @@ Java.perform(() => {
     };
 
     const IGNORE_KEYWORDS = [
-        "ads", "admob", "appmetrica", "firebase",
+        "ads", "admob", "appmetrica",
         "google.analytics", "unity", "ironsource", "adcolony",
         "io.appmetrica.analytics",
         "com.facebook.ads",
@@ -22,6 +22,7 @@ Java.perform(() => {
         "com.google.android.gms.analytics",
         "com.google.firebase.analytics",
         "com.google.firebase.messaging",
+        "com.google.firebase.crashlytics",
         "com.yandex.mobile.ads",
         "com.yandex.appmetrica",
         "com.ironsource",
