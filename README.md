@@ -20,6 +20,7 @@ Logs include transformation type, operation mode, key material, IV, AAD, tag len
 - 🧊 Handles different cipher modes (`CBC`, `GCM`, etc.)
 - 📚 Optional backtrace output (toggle via `PRINT_STACKTRACE`)
 - 🎯 Designed for reverse engineering and dynamic analysis
+- 🧩 Modular architecture with per-module toggles
 
 ---
 
@@ -28,17 +29,46 @@ Logs include transformation type, operation mode, key material, IV, AAD, tag len
 Edit the top of `frida-java-crypto-spy.js` to customize:
 
 ```javascript
+const MODULES = {
+    Cipher: true,
+    SecretKeySpec: true,
+    IvParameterSpec: true,
+    KeyGenerator: false,
+    KeyPairGenerator: false,
+    MessageDigest: false,
+    SecretKeyFactory: false,
+    Signature: false,
+    Mac: false,
+    KeyGenParameterSpec: false
+};
+
 const IGNORE_KEYWORDS = [
     "ads", "admob", "appmetrica", "firebase",
     "google.analytics", "unity", "ironsource", "adcolony"
 ];
-const PRINT_STACKTRACE = true; // Set to false to disable backtrace
+const PRINT_STACKTRACE = true;
 ```
 
 | Variable | Description |
 |----------|-------------|
+| `MODULES.*` | Toggle individual crypto modules on/off |
 | `IGNORE_KEYWORDS` | List of keywords to filter out ad/analytics SDK calls |
 | `PRINT_STACKTRACE` | Toggle backtrace output on/off |
+
+### Module Toggles
+
+| Module | Default | Description |
+|--------|---------|-------------|
+| `Cipher` | ON | AES, DES, RSA and other cipher operations |
+| `SecretKeySpec` | ON | Direct key material interception |
+| `IvParameterSpec` | ON | IV parameter interception |
+| `KeyGenerator` | OFF | Symmetric key generation |
+| `KeyPairGenerator` | OFF | Asymmetric key pair generation |
+| `MessageDigest` | OFF | Hash functions (SHA-256, MD5, etc.) |
+| `SecretKeyFactory` | OFF | Key derivation (PBKDF2, SCrypt) |
+| `Signature` | OFF | Digital signature operations |
+| `Mac` | OFF | HMAC operations |
+| `KeyGenParameterSpec` | OFF | Android Keystore key generation params |
 
 ---
 
@@ -59,6 +89,7 @@ frida -U -f target.app.package -l frida-java-crypto-spy.js
   transformation: AES/CBC/PKCS5Padding
   mode: ENCRYPT
   key: oOej3ieYR1DYWnubZmjIXg==
+  keyHEX: a0e7ebde878758d750d6d6ae66668586
   iv: odaCWSCFyF7C+9xclJdIDw==
 
 [Cipher.doFinal]
@@ -69,6 +100,7 @@ frida -U -f target.app.package -l frida-java-crypto-spy.js
   transformation: AES/CBC/PKCS5Padding
   mode: DECRYPT
   key: oOej3ieYR1DYWnubZmjIXg==
+  keyHEX: a0e7ebde878758d750d6d6ae66668586
   iv: odaCWSCFyF7C+9xclJdIDw==
 
 [Cipher.doFinal]
@@ -108,6 +140,29 @@ frida -U -f target.app.package -l frida-java-crypto-spy.js
 
 ---
 
+### 🔑 SecretKeySpec + HMAC (with all modules enabled)
+
+```bash
+[SecretKeySpec.$init]
+  key: oOej3ieYR1DYWnubZmjIXg==
+  algorithm: AES
+
+[Mac.init]
+  algorithm: HmacSHA256
+  key: oOej3ieYR1DYWnubZmjIXg==
+
+[Mac.doFinal]
+  algorithm: HmacSHA256
+  input: This is Secret
+  output: uU0F7JMrbFUGoYoXBCOLiQ==
+
+[MessageDigest.digest]
+  algorithm: SHA-256
+  output: ...
+```
+
+---
+
 ## 📌 Notes
 
 - `key` is only available if the algorithm uses `SecretKeySpec`
@@ -115,6 +170,8 @@ frida -U -f target.app.package -l frida-java-crypto-spy.js
 - `tagLength` only applies to GCM or AEAD modes
 - Inputs and outputs are shown in UTF-8 if printable, otherwise Base64
 - Set `PRINT_STACKTRACE = false` for cleaner output
+- Enable `MODULES.MessageDigest`, `MODULES.Mac`, etc. for additional crypto analysis
+- HEX values are automatically shown for 16/20/24/32 byte keys
 
 ---
 
