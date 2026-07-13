@@ -1,6 +1,6 @@
 # 🕵️‍♂️ frida-java-crypto-spy
 
-`frida-java-crypto-spy` is a powerful [Frida](https://frida.re) script that hooks into Java's `javax.crypto.Cipher` class on Android apps and logs detailed encryption/decryption operations.
+`frida-java-crypto-spy` is a powerful [Frida](https://frida.re) script for Android reverse engineering that hooks into Java's `javax.crypto.Cipher` class and other crypto-related classes.
 
 It supports a wide variety of cipher modes, including:
 - AES/ECB
@@ -14,11 +14,12 @@ Logs include transformation type, operation mode, key material, IV, AAD, tag len
 
 ## ⚙️ Features
 
-- 🔍 Logs `Cipher.getInstance`, `Cipher.init`, `update`, `doFinal`, and `updateAAD`
-- 🔑 Extracts and displays keys (if `SecretKeySpec`)
+- 🔍 Hooks `Cipher.getInstance`, `init`, `update`, `doFinal`, `updateAAD`
+- 🔑 Direct interception of `SecretKeySpec`, `IvParameterSpec`
 - 📦 Logs plaintext/ciphertext input/output
 - 🧊 Handles different cipher modes (`CBC`, `GCM`, etc.)
 - 📚 Optional backtrace output (toggle via `PRINT_STACKTRACE`)
+- 🔢 Call counting for each hooked method
 - 🎯 Designed for reverse engineering and dynamic analysis
 - 🧩 Modular architecture with per-module toggles
 
@@ -39,63 +40,15 @@ const MODULES = {
     SecretKeyFactory: false,
     Signature: false,
     Mac: false,
-    KeyGenParameterSpec: false
+    KeyGenParameterSpec: false,
+    KeyStore: true,
+    SSLContext: false,
+    OkHttp: false,
+    EncryptedSharedPrefs: false,
+    SQLCipher: false,
+    Tink: false
 };
-
-const IGNORE_KEYWORDS = [
-    "ads", "admob", "appmetrica",
-    "google.analytics", "unity", "ironsource", "adcolony",
-    "io.appmetrica.analytics",
-    "com.facebook.ads",
-    "com.facebook.ads.internal",
-    "com.google.android.gms.ads",
-    "com.google.android.gms.analytics",
-    "com.google.firebase.analytics",
-    "com.google.firebase.messaging",
-    "com.google.firebase.crashlytics",
-    "com.yandex.mobile.ads",
-    "com.yandex.appmetrica",
-    "com.ironsource",
-    "com.applovin",
-    "com.unity3d.ads",
-    "com.unity3d.services",
-    "com.chartboost",
-    "com.vungle",
-    "com.mbridge",
-    "com.inmobi",
-    "com.startapp",
-    "com.tapjoy",
-    "com.adcolony",
-    "com.pangle",
-    "com.bytedance.sdk.openadsdk",
-    "com.kidoz",
-    "com.fyber",
-    "com.smaato",
-    "com.braze",
-    "com.appsflyer",
-    "com.adjust.sdk",
-    "com.kochava",
-    "com.branch",
-    "com.amplitude",
-    "com.mixpanel",
-    "com.segment",
-    "com.tealium",
-    "com.batch",
-    "com.onesignal",
-    "com.pushwoosh",
-    "com.urbanairship",
-    "io.branch.referral",
-    "net.hockeyapp",
-    "com.microsoft.appcenter"
-];
-const PRINT_STACKTRACE = true;
 ```
-
-| Variable | Description |
-|----------|-------------|
-| `MODULES.*` | Toggle individual crypto modules on/off |
-| `IGNORE_KEYWORDS` | List of keywords to filter out ad/analytics SDK calls |
-| `PRINT_STACKTRACE` | Toggle backtrace output on/off |
 
 ### Module Toggles
 
@@ -104,6 +57,7 @@ const PRINT_STACKTRACE = true;
 | `Cipher` | ON | AES, DES, RSA and other cipher operations |
 | `SecretKeySpec` | ON | Direct key material interception |
 | `IvParameterSpec` | ON | IV parameter interception |
+| `KeyStore` | ON | Android KeyStore operations |
 | `KeyGenerator` | OFF | Symmetric key generation |
 | `KeyPairGenerator` | OFF | Asymmetric key pair generation |
 | `MessageDigest` | OFF | Hash functions (SHA-256, MD5, etc.) |
@@ -111,6 +65,11 @@ const PRINT_STACKTRACE = true;
 | `Signature` | OFF | Digital signature operations |
 | `Mac` | OFF | HMAC operations |
 | `KeyGenParameterSpec` | OFF | Android Keystore key generation params |
+| `SSLContext` | OFF | SSL/TLS context operations |
+| `OkHttp` | OFF | OkHttp certificate pinning |
+| `EncryptedSharedPrefs` | OFF | EncryptedSharedPreferences |
+| `SQLCipher` | OFF | SQLCipher encrypted databases |
+| `Tink` | OFF | Google Tink crypto library |
 
 ---
 
@@ -127,25 +86,25 @@ frida -U -f target.app.package -l frida-java-crypto-spy.js
 ### 🧊 AES/CBC/PKCS5Padding
 
 ```bash
-[Cipher.init]
+[Cipher.init] #1
   transformation: AES/CBC/PKCS5Padding
   mode: ENCRYPT
   key: oOej3ieYR1DYWnubZmjIXg==
   keyHEX: a0e7ebde878758d750d6d6ae66668586
   iv: odaCWSCFyF7C+9xclJdIDw==
 
-[Cipher.doFinal]
+[Cipher.doFinal] #1
   input: This is Secret
   output: uU0F7JMrbFUGoYoXBCOLiQ==
 
-[Cipher.init]
+[Cipher.init] #2
   transformation: AES/CBC/PKCS5Padding
   mode: DECRYPT
   key: oOej3ieYR1DYWnubZmjIXg==
   keyHEX: a0e7ebde878758d750d6d6ae66668586
   iv: odaCWSCFyF7C+9xclJdIDw==
 
-[Cipher.doFinal]
+[Cipher.doFinal] #2
   input: uU0F7JMrbFUGoYoXBCOLiQ==
   output: This is Secret
 ```
@@ -155,7 +114,7 @@ frida -U -f target.app.package -l frida-java-crypto-spy.js
 ### 🔐 AES/GCM/NoPadding (with backtrace)
 
 ```bash
-[Cipher.init]
+[Cipher.init] #1
   transformation: AES/GCM/NoPadding
   mode: ENCRYPT
   key: oHeY9IH3/QHKXVu3BCTbWQ==
@@ -172,7 +131,7 @@ frida -U -f target.app.package -l frida-java-crypto-spy.js
               19. javax.crypto.Cipher.init(Cipher.java:-2)
 📚 [End of Backtrace]
 
-[Cipher.doFinal]
+[Cipher.doFinal] #1
   input: This is Secret
   output: 9Ga6l966s++p4i9OACbn3nRp95I9uZSUnJGRzU0H
 📚 Backtrace (depth: 19) ↓↓↓
@@ -182,25 +141,28 @@ frida -U -f target.app.package -l frida-java-crypto-spy.js
 
 ---
 
-### 🔑 SecretKeySpec + HMAC (with all modules enabled)
+### 🔑 KeyStore + SSL (security analysis)
 
 ```bash
-[SecretKeySpec.$init]
-  key: oOej3ieYR1DYWnubZmjIXg==
-  algorithm: AES
+[KeyStore.getInstance] #1
+  type: BKS
 
-[Mac.init]
-  algorithm: HmacSHA256
-  key: oOej3ieYR1DYWnubZmjIXg==
+[KeyStore.load] #1
+  password: mypassword
 
-[Mac.doFinal]
-  algorithm: HmacSHA256
-  input: This is Secret
-  output: uU0F7JMrbFUGoYoXBCOLiQ==
+[KeyStore.getEntry] #1
+  alias: mykey
+  resultType: java.security.KeyStore$PrivateCertEntry
 
-[MessageDigest.digest]
-  algorithm: SHA-256
-  output: ...
+[SSLContext.getInstance] #1
+  protocol: TLS
+
+[CertificatePinner.check] #1
+  hostname: api.example.com
+  peerCertificates: 1
+📚 Backtrace (depth: 12) ↓↓↓
+...
+📚 [End of Backtrace]
 ```
 
 ---
@@ -212,8 +174,9 @@ frida -U -f target.app.package -l frida-java-crypto-spy.js
 - `tagLength` only applies to GCM or AEAD modes
 - Inputs and outputs are shown in UTF-8 if printable, otherwise Base64
 - Set `PRINT_STACKTRACE = false` for cleaner output
-- Enable `MODULES.MessageDigest`, `MODULES.Mac`, etc. for additional crypto analysis
+- Enable additional modules for deeper analysis
 - HEX values are automatically shown for 16/20/24/32 byte keys
+- Call count (`#N`) shows how many times each method was called
 
 ---
 

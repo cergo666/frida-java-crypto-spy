@@ -9,7 +9,13 @@ Java.perform(() => {
         SecretKeyFactory: false,
         Signature: false,
         Mac: false,
-        KeyGenParameterSpec: false
+        KeyGenParameterSpec: false,
+        KeyStore: true,
+        SSLContext: false,
+        OkHttp: false,
+        EncryptedSharedPrefs: false,
+        SQLCipher: false,
+        Tink: false
     };
 
     const IGNORE_KEYWORDS = [
@@ -60,10 +66,6 @@ Java.perform(() => {
     ];
     const PRINT_STACKTRACE = true;
 
-    const Cipher = Java.use("javax.crypto.Cipher");
-    const SecretKeySpec = Java.use("javax.crypto.spec.SecretKeySpec");
-    const IvParameterSpec = Java.use("javax.crypto.spec.IvParameterSpec");
-    const GCMParameterSpec = Java.use("javax.crypto.spec.GCMParameterSpec");
     const Base64 = Java.use("android.util.Base64");
     const Arrays = Java.use("java.util.Arrays");
     const StringCls = Java.use("java.lang.String");
@@ -71,6 +73,7 @@ Java.perform(() => {
 
     const green = "\x1b[32m", blue = "\x1b[34m", yellow = "\x1b[33m", reset = "\x1b[0m", cyan = "\x1b[36m", magenta = "\x1b[35m", red = "\x1b[31m";
     const ctx = new Map();
+    const callCount = new Map();
 
     let colorIndex = 0;
     const MODULE_COLORS = [green, blue, cyan, magenta, yellow];
@@ -115,9 +118,16 @@ Java.perform(() => {
         }
     }
 
+    function incrementCallCount(method) {
+        const count = (callCount.get(method) || 0) + 1;
+        callCount.set(method, count);
+        return count;
+    }
+
     function logObj(title, obj, color) {
         const c = color || yellow;
-        console.log(`${c}[${title}]${reset}`);
+        const count = incrementCallCount(title);
+        console.log(`${c}[${title}] #${count}${reset}`);
         for (const [key, val] of Object.entries(obj)) {
             if (val !== null && val !== undefined) {
                 console.log(`  ${blue}${key}${reset}: ${green}${val}${reset}`);
@@ -204,338 +214,591 @@ Java.perform(() => {
     if (MODULES.Cipher) {
         const color = randomColor();
 
-        Cipher.getInstance.overloads.forEach(o => {
-            o.implementation = function () {
-                const analysis = analyzeStack();
-                if (analysis.ignored) return o.apply(this, arguments);
+        try {
+            const Cipher = Java.use("javax.crypto.Cipher");
 
-                const result = o.apply(this, arguments);
-                logObj("Cipher.getInstance", { transformation: arguments[0] }, color);
-                if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
-                return result;
-            };
-        });
-
-        Cipher.init.overloads.forEach(o => {
-            o.implementation = function () {
-                const analysis = analyzeStack();
-                if (analysis.ignored || analysis.isNested) return o.apply(this, arguments);
-
-                const op = arguments[0].valueOf();
-                const mode = logOpmode(op);
-
-                let keyStr = "unknown";
-                try {
-                    keyStr = encodeBytes(Java.cast(arguments[1], SecretKeySpec).getEncoded());
-                } catch (_) {
-                    try { keyStr = arguments[1].getAlgorithm() + " (non-SecretKeySpec)"; } catch(e) {}
-                }
-
-                let iv = null, tagLength = null;
-                for (let i = 2; i < arguments.length; i++) {
-                    const p = arguments[i];
-                    if (!p) continue;
-                    if (GCMParameterSpec.class.isInstance(p)) {
-                        const g = Java.cast(p, GCMParameterSpec);
-                        iv = encodeBytes(g.getIV());
-                        tagLength = g.getTLen();
-                    } else if (IvParameterSpec.class.isInstance(p)) {
-                        iv = encodeBytes(Java.cast(p, IvParameterSpec).getIV());
-                    }
-                }
-
-                let transformation = "unknown";
-                try { transformation = this.getAlgorithm(); } catch(e) {}
-
-                const handle = this.hashCode().toString();
-                ctx.set(handle, { transformation, mode });
-
-                logObj("Cipher.init", { transformation, mode, key: keyStr, iv, tagLength }, color);
-                if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
-                return o.apply(this, arguments);
-            };
-        });
-
-        Cipher.update.overloads.forEach(o => {
-            o.implementation = function () {
-                const analysis = analyzeStack();
-                if (analysis.ignored) return o.apply(this, arguments);
-
-                const out = o.apply(this, arguments);
-                const handle = this.hashCode().toString();
-                const c = ctx.get(handle);
-                if (!c || c.mode === undefined) return out;
-
-                logObj("Cipher.update", {
-                    transformation: c.transformation,
-                    mode: c.mode,
-                    input: extractInputBytes(arguments)
-                }, color);
-                if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
-                return out;
-            };
-        });
-
-        Cipher.doFinal.overloads.forEach(o => {
-            o.implementation = function () {
-                const analysis = analyzeStack();
-                if (analysis.ignored) return o.apply(this, arguments);
-
-                const result = o.apply(this, arguments);
-                const handle = this.hashCode().toString();
-                const c = ctx.get(handle);
-                if (!c || c.mode === undefined) return result;
-
-                logObj("Cipher.doFinal", {
-                    transformation: c.transformation,
-                    mode: c.mode,
-                    input: extractInputBytes(arguments),
-                    output: extractOutputBytes(arguments, result)
-                }, color);
-                if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
-                return result;
-            };
-        });
-
-        if (Cipher.updateAAD) {
-            Cipher.updateAAD.overloads.forEach(o => {
+            Cipher.getInstance.overloads.forEach(o => {
                 o.implementation = function () {
                     const analysis = analyzeStack();
                     if (analysis.ignored) return o.apply(this, arguments);
 
-                    const handle = this.hashCode().toString();
-                    const c = ctx.get(handle);
-                    if (!c || c.mode === undefined) return o.apply(this, arguments);
+                    const result = o.apply(this, arguments);
+                    logObj("Cipher.getInstance", { transformation: arguments[0] }, color);
+                    if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
+                    return result;
+                };
+            });
 
-                    logObj("Cipher.updateAAD", {
-                        transformation: c.transformation,
-                        mode: c.mode,
-                        aad: encodeBytes(arguments[0])
-                    }, color);
+            Cipher.init.overloads.forEach(o => {
+                o.implementation = function () {
+                    const analysis = analyzeStack();
+                    if (analysis.ignored || analysis.isNested) return o.apply(this, arguments);
+
+                    const op = arguments[0].valueOf();
+                    const mode = logOpmode(op);
+
+                    let keyStr = "unknown";
+                    try {
+                        const SecretKeySpec = Java.use("javax.crypto.spec.SecretKeySpec");
+                        keyStr = encodeBytes(Java.cast(arguments[1], SecretKeySpec).getEncoded());
+                    } catch (_) {
+                        try { keyStr = arguments[1].getAlgorithm() + " (non-SecretKeySpec)"; } catch(e) {}
+                    }
+
+                    let iv = null, tagLength = null;
+                    try {
+                        const GCMParameterSpec = Java.use("javax.crypto.spec.GCMParameterSpec");
+                        const IvParameterSpec = Java.use("javax.crypto.spec.IvParameterSpec");
+                        for (let i = 2; i < arguments.length; i++) {
+                            const p = arguments[i];
+                            if (!p) continue;
+                            if (GCMParameterSpec.class.isInstance(p)) {
+                                const g = Java.cast(p, GCMParameterSpec);
+                                iv = encodeBytes(g.getIV());
+                                tagLength = g.getTLen();
+                            } else if (IvParameterSpec.class.isInstance(p)) {
+                                iv = encodeBytes(Java.cast(p, IvParameterSpec).getIV());
+                            }
+                        }
+                    } catch(_) {}
+
+                    let transformation = "unknown";
+                    try { transformation = this.getAlgorithm(); } catch(e) {}
+
+                    const handle = this.hashCode().toString();
+                    ctx.set(handle, { transformation, mode });
+
+                    logObj("Cipher.init", { transformation, mode, key: keyStr, iv, tagLength }, color);
                     if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
                     return o.apply(this, arguments);
                 };
             });
-        }
+
+            Cipher.update.overloads.forEach(o => {
+                o.implementation = function () {
+                    const analysis = analyzeStack();
+                    if (analysis.ignored) return o.apply(this, arguments);
+
+                    const out = o.apply(this, arguments);
+                    const handle = this.hashCode().toString();
+                    const c = ctx.get(handle);
+                    if (!c || c.mode === undefined) return out;
+
+                    logObj("Cipher.update", {
+                        transformation: c.transformation,
+                        mode: c.mode,
+                        input: extractInputBytes(arguments)
+                    }, color);
+                    if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
+                    return out;
+                };
+            });
+
+            Cipher.doFinal.overloads.forEach(o => {
+                o.implementation = function () {
+                    const analysis = analyzeStack();
+                    if (analysis.ignored) return o.apply(this, arguments);
+
+                    const result = o.apply(this, arguments);
+                    const handle = this.hashCode().toString();
+                    const c = ctx.get(handle);
+                    if (!c || c.mode === undefined) return result;
+
+                    logObj("Cipher.doFinal", {
+                        transformation: c.transformation,
+                        mode: c.mode,
+                        input: extractInputBytes(arguments),
+                        output: extractOutputBytes(arguments, result)
+                    }, color);
+                    if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
+                    return result;
+                };
+            });
+
+            if (Cipher.updateAAD) {
+                Cipher.updateAAD.overloads.forEach(o => {
+                    o.implementation = function () {
+                        const analysis = analyzeStack();
+                        if (analysis.ignored) return o.apply(this, arguments);
+
+                        const handle = this.hashCode().toString();
+                        const c = ctx.get(handle);
+                        if (!c || c.mode === undefined) return o.apply(this, arguments);
+
+                        logObj("Cipher.updateAAD", {
+                            transformation: c.transformation,
+                            mode: c.mode,
+                            aad: encodeBytes(arguments[0])
+                        }, color);
+                        if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
+                        return o.apply(this, arguments);
+                    };
+                });
+            }
+        } catch(e) { console.log(`${red}[!] Cipher hook failed: ${e}${reset}`); }
     }
 
     // ===================== SecretKeySpec =====================
     if (MODULES.SecretKeySpec) {
         const color = randomColor();
-        const sks = Java.use("javax.crypto.spec.SecretKeySpec");
-        sks.$init.overloads.forEach(o => {
-            o.implementation = function () {
-                const analysis = analyzeStack();
-                if (analysis.ignored) return o.apply(this, arguments);
+        try {
+            const sks = Java.use("javax.crypto.spec.SecretKeySpec");
+            sks.$init.overloads.forEach(o => {
+                o.implementation = function () {
+                    const analysis = analyzeStack();
+                    if (analysis.ignored) return o.apply(this, arguments);
 
-                logObj("SecretKeySpec.$init", {
-                    key: encodeBytes(arguments[0]),
-                    algorithm: arguments[1]
-                }, color);
-                if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
-                return o.apply(this, arguments);
-            };
-        });
+                    logObj("SecretKeySpec.$init", {
+                        key: encodeBytes(arguments[0]),
+                        algorithm: arguments[1]
+                    }, color);
+                    if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(e) { console.log(`${red}[!] SecretKeySpec hook failed: ${e}${reset}`); }
     }
 
     // ===================== IvParameterSpec =====================
     if (MODULES.IvParameterSpec) {
         const color = randomColor();
-        const ivps = Java.use("javax.crypto.spec.IvParameterSpec");
-        ivps.$init.overloads.forEach(o => {
-            o.implementation = function () {
-                const analysis = analyzeStack();
-                if (analysis.ignored) return o.apply(this, arguments);
+        try {
+            const ivps = Java.use("javax.crypto.spec.IvParameterSpec");
+            ivps.$init.overloads.forEach(o => {
+                o.implementation = function () {
+                    const analysis = analyzeStack();
+                    if (analysis.ignored) return o.apply(this, arguments);
 
-                logObj("IvParameterSpec.$init", {
-                    iv: encodeBytes(arguments[0])
-                }, color);
-                if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
-                return o.apply(this, arguments);
-            };
-        });
+                    logObj("IvParameterSpec.$init", {
+                        iv: encodeBytes(arguments[0])
+                    }, color);
+                    if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(e) { console.log(`${red}[!] IvParameterSpec hook failed: ${e}${reset}`); }
     }
 
     // ===================== KeyGenerator =====================
     if (MODULES.KeyGenerator) {
         const color = randomColor();
-        const kg = Java.use("javax.crypto.KeyGenerator");
+        try {
+            const kg = Java.use("javax.crypto.KeyGenerator");
 
-        kg.getInstance.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("KeyGenerator.getInstance", { algorithm: arguments[0] }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            kg.getInstance.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("KeyGenerator.getInstance", { algorithm: arguments[0] }, color);
+                    return o.apply(this, arguments);
+                };
+            });
 
-        kg.generateKey.overloads.forEach(o => {
-            o.implementation = function () {
-                const result = o.apply(this, arguments);
-                logObj("KeyGenerator.generateKey", {
-                    algorithm: result.getAlgorithm(),
-                    key: encodeBytes(result.getEncoded())
-                }, color);
-                return result;
-            };
-        });
+            kg.generateKey.overloads.forEach(o => {
+                o.implementation = function () {
+                    const result = o.apply(this, arguments);
+                    logObj("KeyGenerator.generateKey", {
+                        algorithm: result.getAlgorithm(),
+                        key: encodeBytes(result.getEncoded())
+                    }, color);
+                    return result;
+                };
+            });
+        } catch(e) { console.log(`${red}[!] KeyGenerator hook failed: ${e}${reset}`); }
     }
 
     // ===================== KeyPairGenerator =====================
     if (MODULES.KeyPairGenerator) {
         const color = randomColor();
-        const kpg = Java.use("java.security.KeyPairGenerator");
+        try {
+            const kpg = Java.use("java.security.KeyPairGenerator");
 
-        kpg.getInstance.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("KeyPairGenerator.getInstance", { algorithm: arguments[0] }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            kpg.getInstance.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("KeyPairGenerator.getInstance", { algorithm: arguments[0] }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(e) { console.log(`${red}[!] KeyPairGenerator hook failed: ${e}${reset}`); }
     }
 
     // ===================== MessageDigest =====================
     if (MODULES.MessageDigest) {
         const color = randomColor();
-        const md = Java.use("java.security.MessageDigest");
+        try {
+            const md = Java.use("java.security.MessageDigest");
 
-        md.getInstance.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("MessageDigest.getInstance", { algorithm: arguments[0] }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            md.getInstance.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("MessageDigest.getInstance", { algorithm: arguments[0] }, color);
+                    return o.apply(this, arguments);
+                };
+            });
 
-        md.update.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("MessageDigest.update", {
-                    algorithm: this.getAlgorithm(),
-                    input: encodeBytes(arguments[0])
-                }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            md.update.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("MessageDigest.update", {
+                        algorithm: this.getAlgorithm(),
+                        input: encodeBytes(arguments[0])
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
 
-        md.digest.overloads.forEach(o => {
-            o.implementation = function () {
-                const result = o.apply(this, arguments);
-                logObj("MessageDigest.digest", {
-                    algorithm: this.getAlgorithm(),
-                    output: encodeBytes(result)
-                }, color);
-                return result;
-            };
-        });
+            md.digest.overloads.forEach(o => {
+                o.implementation = function () {
+                    const result = o.apply(this, arguments);
+                    logObj("MessageDigest.digest", {
+                        algorithm: this.getAlgorithm(),
+                        output: encodeBytes(result)
+                    }, color);
+                    return result;
+                };
+            });
+        } catch(e) { console.log(`${red}[!] MessageDigest hook failed: ${e}${reset}`); }
     }
 
     // ===================== SecretKeyFactory =====================
     if (MODULES.SecretKeyFactory) {
         const color = randomColor();
-        const skf = Java.use("javax.crypto.SecretKeyFactory");
+        try {
+            const skf = Java.use("javax.crypto.SecretKeyFactory");
 
-        skf.getInstance.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("SecretKeyFactory.getInstance", { algorithm: arguments[0] }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            skf.getInstance.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("SecretKeyFactory.getInstance", { algorithm: arguments[0] }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(e) { console.log(`${red}[!] SecretKeyFactory hook failed: ${e}${reset}`); }
     }
 
     // ===================== Signature =====================
     if (MODULES.Signature) {
         const color = randomColor();
-        const sig = Java.use("java.security.Signature");
+        try {
+            const sig = Java.use("java.security.Signature");
 
-        sig.getInstance.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("Signature.getInstance", { algorithm: arguments[0] }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            sig.getInstance.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("Signature.getInstance", { algorithm: arguments[0] }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(e) { console.log(`${red}[!] Signature hook failed: ${e}${reset}`); }
     }
 
     // ===================== Mac =====================
     if (MODULES.Mac) {
         const color = randomColor();
-        const mac = Java.use("javax.crypto.Mac");
+        try {
+            const mac = Java.use("javax.crypto.Mac");
 
-        mac.getInstance.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("Mac.getInstance", { algorithm: arguments[0] }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            mac.getInstance.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("Mac.getInstance", { algorithm: arguments[0] }, color);
+                    return o.apply(this, arguments);
+                };
+            });
 
-        mac.init.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("Mac.init", {
-                    algorithm: this.getAlgorithm(),
-                    key: encodeBytes(arguments[0].getEncoded())
-                }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            mac.init.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("Mac.init", {
+                        algorithm: this.getAlgorithm(),
+                        key: encodeBytes(arguments[0].getEncoded())
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
 
-        mac.doFinal.overloads.forEach(o => {
-            o.implementation = function () {
-                const result = o.apply(this, arguments);
-                logObj("Mac.doFinal", {
-                    algorithm: this.getAlgorithm(),
-                    input: arguments.length > 0 ? encodeBytes(arguments[0]) : null,
-                    output: encodeBytes(result)
-                }, color);
-                return result;
-            };
-        });
+            mac.doFinal.overloads.forEach(o => {
+                o.implementation = function () {
+                    const result = o.apply(this, arguments);
+                    logObj("Mac.doFinal", {
+                        algorithm: this.getAlgorithm(),
+                        input: arguments.length > 0 ? encodeBytes(arguments[0]) : null,
+                        output: encodeBytes(result)
+                    }, color);
+                    return result;
+                };
+            });
+        } catch(e) { console.log(`${red}[!] Mac hook failed: ${e}${reset}`); }
     }
 
     // ===================== KeyGenParameterSpec =====================
     if (MODULES.KeyGenParameterSpec) {
         const color = randomColor();
-        const kgsBuilder = Java.use("android.security.keystore.KeyGenParameterSpec$Builder");
+        try {
+            const kgsBuilder = Java.use("android.security.keystore.KeyGenParameterSpec$Builder");
 
-        kgsBuilder.$init.overloads.forEach(o => {
-            o.implementation = function () {
-                const purpose = arguments[1];
-                const purposeMap = { 1: "encrypt", 2: "decrypt", 3: "encrypt|decrypt", 4: "sign", 8: "verify" };
-                logObj("KeyGenParameterSpec.$init", {
-                    keyStoreAlias: arguments[0],
-                    purpose: purposeMap[purpose] || purpose
-                }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            kgsBuilder.$init.overloads.forEach(o => {
+                o.implementation = function () {
+                    const purpose = arguments[1];
+                    const purposeMap = { 1: "encrypt", 2: "decrypt", 3: "encrypt|decrypt", 4: "sign", 8: "verify" };
+                    logObj("KeyGenParameterSpec.$init", {
+                        keyStoreAlias: arguments[0],
+                        purpose: purposeMap[purpose] || purpose
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
 
-        kgsBuilder.setBlockModes.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("KeyGenParameterSpec.setBlockModes", { blockModes: arguments[0].toString() }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            kgsBuilder.setBlockModes.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("KeyGenParameterSpec.setBlockModes", { blockModes: arguments[0].toString() }, color);
+                    return o.apply(this, arguments);
+                };
+            });
 
-        kgsBuilder.setDigests.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("KeyGenParameterSpec.setDigests", { digests: arguments[0].toString() }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            kgsBuilder.setDigests.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("KeyGenParameterSpec.setDigests", { digests: arguments[0].toString() }, color);
+                    return o.apply(this, arguments);
+                };
+            });
 
-        kgsBuilder.setKeySize.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("KeyGenParameterSpec.setKeySize", { keySize: arguments[0] }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            kgsBuilder.setKeySize.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("KeyGenParameterSpec.setKeySize", { keySize: arguments[0] }, color);
+                    return o.apply(this, arguments);
+                };
+            });
 
-        kgsBuilder.setEncryptionPaddings.overloads.forEach(o => {
-            o.implementation = function () {
-                logObj("KeyGenParameterSpec.setEncryptionPaddings", { paddings: arguments[0].toString() }, color);
-                return o.apply(this, arguments);
-            };
-        });
+            kgsBuilder.setEncryptionPaddings.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("KeyGenParameterSpec.setEncryptionPaddings", { paddings: arguments[0].toString() }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(e) { console.log(`${red}[!] KeyGenParameterSpec hook failed: ${e}${reset}`); }
     }
 
+    // ===================== KeyStore =====================
+    if (MODULES.KeyStore) {
+        const color = randomColor();
+        try {
+            const KeyStore = Java.use("java.security.KeyStore");
+
+            KeyStore.getInstance.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("KeyStore.getInstance", {
+                        type: arguments[0],
+                        provider: arguments.length > 1 ? arguments[1] : null
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+
+            KeyStore.load.overloads.forEach(o => {
+                o.implementation = function () {
+                    const analysis = analyzeStack();
+                    if (analysis.ignored) return o.apply(this, arguments);
+
+                    logObj("KeyStore.load", {
+                        stream: arguments[0] ? "InputStream" : null,
+                        password: arguments[1] ? encodeBytes(arguments[1]) : null
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+
+            KeyStore.getEntry.overloads.forEach(o => {
+                o.implementation = function () {
+                    const result = o.apply(this, arguments);
+                    logObj("KeyStore.getEntry", {
+                        alias: arguments[0],
+                        password: arguments[1] ? encodeBytes(arguments[1]) : null,
+                        resultType: result ? result.getClass().getName() : null
+                    }, color);
+                    return result;
+                };
+            });
+
+            KeyStore.getKey.overloads.forEach(o => {
+                o.implementation = function () {
+                    const result = o.apply(this, arguments);
+                    logObj("KeyStore.getKey", {
+                        alias: arguments[0],
+                        algorithm: result ? result.getAlgorithm() : null,
+                        encoded: result ? encodeBytes(result.getEncoded()) : null
+                    }, color);
+                    return result;
+                };
+            });
+
+            KeyStore.setEntry.overloads.forEach(o => {
+                o.implementation = function () {
+                    const analysis = analyzeStack();
+                    if (analysis.ignored) return o.apply(this, arguments);
+
+                    logObj("KeyStore.setEntry", {
+                        alias: arguments[0]
+                    }, color);
+                    if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(e) { console.log(`${red}[!] KeyStore hook failed: ${e}${reset}`); }
+    }
+
+    // ===================== SSLContext =====================
+    if (MODULES.SSLContext) {
+        const color = randomColor();
+        try {
+            const SSLContext = Java.use("javax.net.ssl.SSLContext");
+
+            SSLContext.getInstance.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("SSLContext.getInstance", { protocol: arguments[0] }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+
+            SSLContext.init.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("SSLContext.init", {
+                        keyManagers: arguments[0] ? arguments[0].length : 0,
+                        trustManagers: arguments[1] ? arguments[1].length : null
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(e) { console.log(`${red}[!] SSLContext hook failed: ${e}${reset}`); }
+
+        try {
+            const TrustManagerImpl = Java.use("com.android.org.conscrypt.TrustManagerImpl");
+            TrustManagerImpl.verifyChain.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("TrustManagerImpl.verifyChain", {
+                        untrustedChainSize: arguments[0] ? arguments[0].size() : 0
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(_) {}
+    }
+
+    // ===================== OkHttp =====================
+    if (MODULES.OkHttp) {
+        const color = randomColor();
+        try {
+            const CertificatePinner = Java.use("okhttp3.CertificatePinner");
+            CertificatePinner.check.overloads.forEach(o => {
+                o.implementation = function () {
+                    const analysis = analyzeStack();
+                    if (analysis.ignored) return o.apply(this, arguments);
+
+                    logObj("CertificatePinner.check", {
+                        hostname: arguments[0],
+                        peerCertificates: arguments[1] ? arguments[1].size() : null
+                    }, color);
+                    if (PRINT_STACKTRACE) printBacktrace(analysis.stack);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(_) {}
+
+        try {
+            const OkHttpClient = Java.use("okhttp3.OkHttpClient");
+            OkHttpClient.newBuilder.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("OkHttp.newBuilder", {}, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(_) {}
+    }
+
+    // ===================== EncryptedSharedPreferences =====================
+    if (MODULES.EncryptedSharedPrefs) {
+        const color = randomColor();
+        try {
+            const EncryptedSharedPrefs = Java.use("androidx.security.crypto.EncryptedSharedPreferences");
+            EncryptedSharedPrefs.create.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("EncryptedSharedPreferences.create", {
+                        fileName: arguments[0],
+                        masterKeyAlias: arguments[2] ? "MasterKey" : null
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(_) {}
+    }
+
+    // ===================== SQLCipher =====================
+    if (MODULES.SQLCipher) {
+        const color = randomColor();
+        try {
+            const SQLiteDatabase = Java.use("net.sqlcipher.database.SQLiteDatabase");
+
+            SQLiteDatabase.openOrCreateDatabase.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("SQLCipher.openOrCreateDatabase", {
+                        file: arguments[0],
+                        password: arguments[1] ? encodeBytes(arguments[1]) : null
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+
+            SQLiteDatabase.openDatabase.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("SQLCipher.openDatabase", {
+                        path: arguments[0]
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+
+            SQLiteDatabase.rawExecSQL.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("SQLCipher.rawExecSQL", {
+                        sql: arguments[0]
+                    }, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(_) {}
+    }
+
+    // ===================== Tink =====================
+    if (MODULES.Tink) {
+        const color = randomColor();
+        try {
+            const Aead = Java.use("com.google.crypto.tink.Aead");
+            const KeysetHandle = Java.use("com.google.crypto.tink.KeysetHandle");
+
+            KeysetHandle.generateNew.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("Tink.KeysetHandle.generateNew", {}, color);
+                    return o.apply(this, arguments);
+                };
+            });
+
+            KeysetHandle.read.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("Tink.KeysetHandle.read", {}, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(_) {}
+
+        try {
+            const Mac = Java.use("com.google.crypto.tink.Mac");
+            const KeysetHandle = Java.use("com.google.crypto.tink.KeysetHandle");
+
+            KeysetHandle.getPrimitive.overloads.forEach(o => {
+                o.implementation = function () {
+                    logObj("Tink.KeysetHandle.getPrimitive", {}, color);
+                    return o.apply(this, arguments);
+                };
+            });
+        } catch(_) {}
+    }
+
+    // ===================== Summary =====================
     const enabled = Object.entries(MODULES).filter(([_, v]) => v).map(([k]) => k);
     console.log(`${green}[+] Crypto Hooks installed. Modules: ${enabled.join(", ")}${reset}`);
-    console.log(`${green}[+] Ignore list: ${IGNORE_KEYWORDS.join(", ")}${reset}`);
+    console.log(`${green}[+] Ignore list: ${IGNORE_KEYWORDS.length} keywords${reset}`);
     console.log(`${green}[+] PRINT_STACKTRACE: ${PRINT_STACKTRACE}${reset}`);
+    console.log(`${green}[+] Call counting enabled${reset}`);
 });
