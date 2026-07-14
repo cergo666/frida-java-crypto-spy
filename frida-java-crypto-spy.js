@@ -91,7 +91,24 @@ Java.perform(() => {
             ? jsStr
             : Base64.encodeToString(bytes, 0).toString();
         } catch (_) {
-            return Base64.encodeToString(bytes, 0).toString();
+            try {
+                return Base64.encodeToString(bytes, 0).toString();
+            } catch (_) {
+                try {
+                    return StringCls.$new(bytes) + "";
+                } catch (_) {
+                    return null;
+                }
+            }
+        }
+    }
+
+    function encodeChars(chars) {
+        if (!chars) return null;
+        try {
+            return StringCls.$new(chars) + "";
+        } catch (_) {
+            return null;
         }
     }
 
@@ -595,7 +612,7 @@ Java.perform(() => {
 
                     logObj("KeyStore.load", {
                         stream: arguments[0] ? "InputStream" : null,
-                        password: arguments[1] ? encodeBytes(arguments[1]) : null
+                        password: arguments[1] ? encodeChars(arguments[1]) : null
                     }, color);
                     return o.apply(this, arguments);
                 };
@@ -606,7 +623,7 @@ Java.perform(() => {
                     const result = o.apply(this, arguments);
                     logObj("KeyStore.getEntry", {
                         alias: arguments[0],
-                        password: arguments[1] ? encodeBytes(arguments[1]) : null,
+                        password: arguments[1] ? encodeChars(arguments[1]) : null,
                         resultType: result ? result.getClass().getName() : null
                     }, color);
                     return result;
@@ -618,6 +635,7 @@ Java.perform(() => {
                     const result = o.apply(this, arguments);
                     logObj("KeyStore.getKey", {
                         alias: arguments[0],
+                        password: arguments[1] ? encodeChars(arguments[1]) : null,
                         algorithm: result ? result.getAlgorithm() : null,
                         encoded: result ? encodeBytes(result.getEncoded()) : null
                     }, color);
